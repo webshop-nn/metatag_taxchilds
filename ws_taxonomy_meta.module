@@ -1,0 +1,322 @@
+<?php
+
+/**
+ * @file
+ * Primary module hooks for Метатэги наследников таксономии module.
+ *
+ * @DCG
+ * This file is no longer required in Drupal 8.
+ * @see https://www.drupal.org/node/2217931
+ */
+
+use \Drupal\Core\Form\FormStateInterface;
+use \Drupal\Core\Entity\EntityInterface;
+
+/**
+ * Функция, добавляющая виджет в форм настроек таксономии
+ *
+ * @param array $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ */
+function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_state) {
+	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
+	$entity_type = $entity->getEntityType()->id();
+	$config = Drupal::configFactory()->getEditable('ws_taxonomy_meta.' . $entity_type . '.' . $entity->id());
+
+	$form['ws_taxonomy_meta'] = [
+		'#type' => 'details',
+		'#title' => t('Шаблон мета данных для наследников'),
+		'#open' => false,
+		'#weight' => 10
+	];
+
+	$form['ws_taxonomy_meta']['enable_override_meta'] = [
+		'#type' => 'checkbox',
+		'#title' => t('Переопределить мета данные наследников.'),
+		'#default_value' => $config->get('enable_override')
+	];
+
+	$form['ws_taxonomy_meta']['meta_token_help'] = [
+		'#theme' => 'token_tree_link',
+		'#token_types' => ['node','commerce_product']
+	];
+
+	$form['ws_taxonomy_meta']['meta_title'] = [
+		'#type'  => 'textfield',
+		'#title' => 'Заголовок',
+		'#states' => [
+			'visible' => [
+				':input[name="enable_override_meta"]' => ['checked' => TRUE],
+			]
+		],
+		'#default_value' => $config->get('title')
+	];
+
+	$form['ws_taxonomy_meta']['meta_description'] = [
+		'#type'  => 'textarea',
+		'#title' => 'Описание',
+		'#states' => [
+			'visible' => [
+				':input[name="enable_override_meta"]' => ['checked' => TRUE],
+			]
+		],
+		'#default_value' => $config->get('description')
+	];
+
+	$form['ws_taxonomy_meta']['meta_words'] = [
+		'#type'  => 'textfield',
+		'#title' => 'Ключевые слова',
+		'#states' => [
+			'visible' => [
+				':input[name="enable_override_meta"]' => ['checked' => TRUE],
+			]
+		],
+		'#default_value' => $config->get('words')
+	];
+
+	$form['actions']['submit']['#submit'][] = 'ws_taxonomy_meta_submit_handler';
+}
+/**
+ * Implements hook_form_BASE_FORM_ID_alter().
+ *
+ * @param array $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ */
+function ws_taxonomy_meta_form_taxonomy_term_form_alter(array &$form, FormStateInterface $form_state) {
+	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
+	if ($entity->id() !== NULL)
+		_ws_taxonomy_meta_settings_form($form,$form_state);
+}
+/**
+ * Implements hook_form_BASE_FORM_ID_alter().
+ *
+ * @param array $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ */
+function ws_taxonomy_meta_form_taxonomy_vocabulary_form_alter(array &$form, FormStateInterface $form_state) {
+	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
+	if ($entity->id() !== NULL)
+		_ws_taxonomy_meta_settings_form($form,$form_state);
+}
+/**
+ * Submit handler attached to term and vocabulary forms.
+ *
+ * @param array $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ */
+function ws_taxonomy_meta_submit_handler(array $form, FormStateInterface $form_state) {
+	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
+	$entity_type = $entity->getEntityType()->id();
+	$form_values = $form_state->getValues();
+
+	if ($form_values["enable_override_meta"]) {
+		\Drupal::configFactory()
+			->getEditable('ws_taxonomy_meta.' . $entity_type . '.' . $entity->id())
+			->set('enable_override', $form_values['enable_override_meta'])
+			->set('title', $form_values['meta_title'])
+			->set('description', $form_values['meta_description'])
+			->set('words', $form_values['meta_words'])
+			->save();
+	} else {
+		\Drupal::configFactory()
+			->getEditable('ws_taxonomy_meta.' . $entity_type . '.' . $entity->id())
+			->delete();
+	}
+}
+/**
+ * Implements hook_ENTITY_TYPE_delete().
+ */
+function ws_taxonomy_meta_taxonomy_vocabulary_delete(EntityInterface $entity) {
+	\Drupal::configFactory()->getEditable('ws_taxonomy_meta.'.$entity->getEntityType()->id().'.' . $entity->id())->delete();
+}
+/**
+ * Implements hook_taxonomy_term_delete().
+ */
+function ws_taxonomy_meta_taxonomy_term_delete(EntityInterface $entity) {
+	\Drupal::configFactory()->getEditable('ws_taxonomy_meta.'.$entity->getEntityType()->id().'.' . $entity->id())->delete();
+}
+/**
+ * Функция анализирует параметры страницы и выдает мета данные
+ * @return array
+ */
+function _ws_taxonomy_meta_get_meta() {
+	$title = null;
+	$description = null;
+	$keywords = null;
+
+	$entity = null;
+	$route_match = \Drupal::routeMatch();
+	$entity = \Drupal::routeMatch()->getParameter('node');
+	$entity_type = null;
+
+	if (is_object($entity))
+		$entity_type = "node";
+	else {
+		$entity = \Drupal::routeMatch()->getParameter('commerce_product');
+		if (is_object($entity))
+			$entity_type = "commerce_product";
+	}
+
+	if ($entity_type === null)
+		return [];
+
+	$arr = $entity->toArray();
+	foreach ($arr as $key => $value) {
+		if ($entity->get($key) instanceof \Drupal\Core\Field\EntityReferenceFieldItemList) {
+
+			$entity_term = $entity->get($key)->entity;
+			if ($entity_term === null || $entity_term->getEntityTypeId() !== "taxonomy_term") continue;
+
+			$config = \Drupal::configFactory()->get("ws_taxonomy_meta.taxonomy_term.".$entity_term->id());
+
+			$finded = false;
+
+			// Смотрим описание и слова у настроек таксономии
+			if ($config->get("enable_override")) {
+				$finded = true;
+				$title = $config->get("title");
+				if (is_string($title) && strlen($title) < 1)
+					$title = null;
+				$description = $config->get("description");
+				if (is_string($description) && strlen($description) < 1)
+					$description = null;
+				$keywords = $config->get("words");
+				if (is_string($keywords) && strlen($keywords) < 1)
+					$keywords = null;
+
+			// Если не найдены, то смотрим у родителей
+			} else {
+				$parent = $entity_term;
+				while ($parent->parent->count() > 0) {
+					$parent = $parent->parent->entity;
+					if ($parent === null) break;
+
+					$config = \Drupal::configFactory()->get("ws_taxonomy_meta.taxonomy_term.".$parent->id());
+					if ($config->get("enable_override")) {
+						$finded = true;
+						$title = $config->get("title");
+						if (is_string($title) && strlen($title) < 1)
+							$title = null;
+						$description = $config->get("description");
+						if (is_string($description) && strlen($description) < 1)
+							$description = null;
+						$keywords = $config->get("words");
+						if (is_string($keywords) && strlen($keywords) < 1)
+							$keywords = null;
+						break;
+					}
+
+				}
+			}
+
+			// Если не найдено, то смотрим у настроек типа таксономии
+			if (!$finded) {
+				$config = \Drupal::configFactory()->get("ws_taxonomy_meta.taxonomy_vocabulary.".$entity_term->vid->target_id);
+
+				if ($config->get("enable_override")) {
+					$title = $config->get("title");
+					if (is_string($title) && strlen($title) < 1)
+						$title = null;
+					$description = $config->get("description");
+					if (is_string($description) && strlen($description) < 1)
+						$description = null;
+					$keywords = $config->get("words");
+					if (is_string($keywords) && strlen($keywords) < 1)
+						$keywords = null;
+				}
+			}
+		}
+	}
+	return [
+		"title"       => $title,
+		"description" => $description,
+		"keywords"    => $keywords,
+		"#context"    => [
+			"entity"      => $entity,
+			"entity_type" => $entity_type
+		]
+	];
+}
+/**
+ * Implements hook_page_attachments_alter().
+ */
+function ws_taxonomy_meta_page_attachments_alter(array &$vars) {
+
+	$vars['#cache']['tags'][] = 'taxonomy_term_list';
+
+	$metas = _ws_taxonomy_meta_get_meta();
+	if (count($metas) < 1) return;
+
+	if (isset($metas["description"]))
+		$description = $metas["description"];
+	else
+		$description = null;
+
+	if (isset($metas["keywords"]))
+		$keywords = $metas["keywords"];
+	else
+		$keywords = null;
+
+	if ($keywords === null && $description === null)
+		return;
+
+	if (isset($vars["#attached"]["html_head"]))
+		foreach ($vars["#attached"]["html_head"] as &$value) {
+			if (isset($value[0]) && isset($value[1]))
+			switch ($value[1]) {
+				case 'description':
+					if (isset($value[0]["#attributes"]["content"])) {
+						$description = null;
+					}
+					break;
+				case 'keywords':
+					if (isset($value[0]["#attributes"]["content"])) {
+						$keywords = null;
+					}
+					break;
+			}
+		}
+
+	if ($keywords === null && $description === null)
+		return;
+
+	$token_service = \Drupal::token();
+
+	if ($description !== null)
+		$vars["#attached"]["html_head"][] = [
+			[
+				"#tag"        => "meta",
+				"#attributes" => [
+					"name"    => "description",
+					"content" => $token_service->replace($description, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true])
+				]
+			],
+			"description"
+		];
+
+	if ($keywords !== null)
+		$vars["#attached"]["html_head"][] = [
+			[
+				"#tag"        => "meta",
+				"#attributes" => [
+					"name"    => "keywords",
+					"content" => $token_service->replace($keywords, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true])
+				]
+			],
+			"keywords"
+		];
+}
+/**
+ * Implements hook_preprocess_html().
+ */
+function ws_taxonomy_meta_preprocess_html(&$vars) {
+	$vars['#cache']['tags'][] = 'taxonomy_term_list';
+
+	$metas = _ws_taxonomy_meta_get_meta();
+	if (count($metas) < 1) return;
+
+	if (is_string($metas["title"]) && strlen($metas["title"]) > 0) {
+		$token_service = \Drupal::token();
+		$vars["head_title"]["title"] = $token_service->replace($metas["title"], [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true]);
+	}
+}
