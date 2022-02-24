@@ -44,6 +44,8 @@ function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_
 	$form['ws_taxonomy_meta']['meta_title'] = [
 		'#type'  => 'textfield',
 		'#title' => 'Заголовок',
+		'#size'  => 255,
+		'#maxlength'  => 255,
 		'#states' => [
 			'visible' => [
 				':input[name="enable_override_meta"]' => ['checked' => TRUE],
@@ -66,6 +68,8 @@ function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_
 	$form['ws_taxonomy_meta']['meta_words'] = [
 		'#type'  => 'textfield',
 		'#title' => 'Ключевые слова',
+		'#size'  => 255,
+		'#maxlength'  => 255,
 		'#states' => [
 			'visible' => [
 				':input[name="enable_override_meta"]' => ['checked' => TRUE],
@@ -282,29 +286,35 @@ function ws_taxonomy_meta_page_attachments_alter(array &$vars) {
 
 	$token_service = \Drupal::token();
 
-	if ($description !== null)
+	if ($description !== null) {
+		$description = $token_service->replace($description, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true]);
+		$description = str_replace(["\n","\r"],"",strip_tags(html_entity_decode($description,ENT_COMPAT)));
 		$vars["#attached"]["html_head"][] = [
 			[
 				"#tag"        => "meta",
 				"#attributes" => [
 					"name"    => "description",
-					"content" => $token_service->replace($description, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true])
+					"content" => $description
 				]
 			],
 			"description"
 		];
+	}
 
-	if ($keywords !== null)
+	if ($keywords !== null) {
+		$keywords = $token_service->replace($keywords, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true]);
+		$keywords = str_replace(["\n","\r"],"",strip_tags(html_entity_decode($keywords,ENT_COMPAT)));
 		$vars["#attached"]["html_head"][] = [
 			[
 				"#tag"        => "meta",
 				"#attributes" => [
 					"name"    => "keywords",
-					"content" => $token_service->replace($keywords, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true])
+					"content" => $keywords
 				]
 			],
 			"keywords"
 		];
+	}
 }
 /**
  * Implements hook_preprocess_html().
