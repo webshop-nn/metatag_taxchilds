@@ -78,7 +78,86 @@ function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_
 		'#default_value' => $config->get('words')
 	];
 
+	$values_default = $config->get('alt_images');
+	if (!is_array($values_default)) $values_default = [];
+	$values = $form_state->get('num_images');
+	if (empty($values)) {
+		$values = count($values_default)+1;
+		if ($values < 1) $values = 1;
+	}
+
+	$form_state->set('num_images',$values+1);
+
+	$form['ws_taxonomy_meta']['alt_images'] = [
+		"#type" => 'fieldset',
+		"#title" => "ALT изображений",
+		"#tree" => true,
+		"#attributes" => [
+			"id" => "taxonomy_meta_alt_images"
+		],
+		'#states' => [
+			'visible' => [
+				':input[name="enable_override_meta"]' => ['checked' => TRUE],
+			]
+		],
+		"#tree" => true
+	];
+	for ($i = 0; $i < $values; $i++) {
+		$form['ws_taxonomy_meta']['alt_images'][$i] = [ "#type" => "textfield" ];
+		if (isset($values_default[$i]))
+			$form['ws_taxonomy_meta']['alt_images'][$i]["#default_value"] = $values_default[$i];
+	}
+
+	$form['ws_taxonomy_meta']['alt_images_more'] = [
+		"#type" => "button",
+		"#value" => t("more"),
+		"#ajax" => [
+			'callback' => "ws_taxonomy_meta_alt_images_more_callback",
+			'wrapper' => "taxonomy_meta_alt_images"
+		]
+	];
+
 	$form['actions']['submit']['#submit'][] = 'ws_taxonomy_meta_submit_handler';
+}
+/**
+ * Callback кнопки "Добавиь еще"
+ */
+function ws_taxonomy_meta_alt_images_more_callback(array &$form, FormStateInterface $form_state) {
+	return $form['ws_taxonomy_meta']['alt_images'];
+}
+
+function ws_taxonomy_meta_preprocess_node(&$vars) {
+	$metas = _ws_taxonomy_meta_get_meta($vars["node"]);
+	$alt_images = [];
+	if (isset($metas["alt_images"]) && is_array($metas["alt_images"]))
+		$alt_images = $metas["alt_images"];
+	
+	$alt_images_length = count($alt_images);
+	
+	if ($alt_images_length > 0) {
+		
+		// Подставляем значения
+		$token_service = \Drupal::token();
+		foreach ($alt_images as $key => $item) {
+			$alt_images[$key] = $token_service->replace($item, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true]);
+		}
+		
+		// Записываем alt
+		foreach($vars["content"] as &$item) {
+			if (isset($item["#theme"]) && $item["#theme"] === "field" && isset($item["#field_type"]) && $item["#field_type"] === "image") {
+				foreach ($item as $key => &$image) {
+					if (is_int($key)) {
+						if ((strlen($image["#item"]->alt) <= 0) && isset($alt_images[$key]))
+							$image["#item_attributes"]["alt"] = $alt_images[$key];
+					}
+				}
+			}
+		}
+	}
+}
+function ws_taxonomy_meta_preprocess_responsive_image_formatter(&$vars) {
+	if (isset($vars["item_attributes"]["alt"]))
+		$vars["responsive_image"]["#attributes"]["alt"] = $vars["item_attributes"]["alt"];
 }
 /**
  * Implements hook_form_BASE_FORM_ID_alter().
@@ -112,6 +191,13 @@ function ws_taxonomy_meta_submit_handler(array $form, FormStateInterface $form_s
 	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
 	$entity_type = $entity->getEntityType()->id();
 	$form_values = $form_state->getValues();
+	
+	$alt_images = [];
+	if (is_array($form_values['alt_images']))
+	foreach ($form_values['alt_images'] as $item) {
+		if (is_string($item) && strlen($item) > 0)
+			$alt_images[] = $item;
+	}
 
 	if ($form_values["enable_override_meta"]) {
 		\Drupal::configFactory()
@@ -120,6 +206,7 @@ function ws_taxonomy_meta_submit_handler(array $form, FormStateInterface $form_s
 			->set('title', $form_values['meta_title'])
 			->set('description', $form_values['meta_description'])
 			->set('words', $form_values['meta_words'])
+			->set('alt_images', $alt_images)
 			->save();
 	} else {
 		\Drupal::configFactory()
@@ -143,25 +230,23 @@ function ws_taxonomy_meta_taxonomy_term_delete(EntityInterface $entity) {
  * Функция анализирует параметры страницы и выдает мета данные
  * @return array
  */
-function _ws_taxonomy_meta_get_meta() {
+function _ws_taxonomy_meta_get_meta(EntityInterface $entity = null) {
 	$title = null;
 	$description = null;
 	$keywords = null;
+	$alt_images = null;
 
-	$entity = null;
-	$route_match = \Drupal::routeMatch();
-	$entity = \Drupal::routeMatch()->getParameter('node');
-	$entity_type = null;
-
-	if (is_object($entity))
-		$entity_type = "node";
-	else {
-		$entity = \Drupal::routeMatch()->getParameter('commerce_product');
-		if (is_object($entity))
-			$entity_type = "commerce_product";
+	if ($entity === null) {
+		
+		$route_match = \Drupal::routeMatch();
+		$entity = $route_match->getParameter('node');
+		
+		if (!is_object($entity)) {
+			$entity = $route_match->getParameter('commerce_product');
+		}
 	}
-
-	if ($entity_type === null)
+	
+	if ($entity === null || !is_object($entity))
 		return [];
 
 	$arr = $entity->toArray();
@@ -187,6 +272,8 @@ function _ws_taxonomy_meta_get_meta() {
 				$keywords = $config->get("words");
 				if (is_string($keywords) && strlen($keywords) < 1)
 					$keywords = null;
+				
+				$alt_images = $config->get("alt_images");
 
 			// Если не найдены, то смотрим у родителей
 			} else {
@@ -207,6 +294,8 @@ function _ws_taxonomy_meta_get_meta() {
 						$keywords = $config->get("words");
 						if (is_string($keywords) && strlen($keywords) < 1)
 							$keywords = null;
+							
+						$alt_images = $config->get("alt_images");
 						break;
 					}
 
@@ -227,6 +316,8 @@ function _ws_taxonomy_meta_get_meta() {
 					$keywords = $config->get("words");
 					if (is_string($keywords) && strlen($keywords) < 1)
 						$keywords = null;
+						
+					$alt_images = $config->get("alt_images");
 				}
 			}
 		}
@@ -235,9 +326,10 @@ function _ws_taxonomy_meta_get_meta() {
 		"title"       => $title,
 		"description" => $description,
 		"keywords"    => $keywords,
+		"alt_images"  => $alt_images,
 		"#context"    => [
 			"entity"      => $entity,
-			"entity_type" => $entity_type
+			"entity_type" => $entity->getEntityTypeId()
 		]
 	];
 }
