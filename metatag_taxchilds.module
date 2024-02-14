@@ -10,7 +10,7 @@
  */
 
 use \Drupal\Core\Form\FormStateInterface;
-use \Drupal\Core\Entity\EntityInterface;
+use \Drupal\Core\Entity\ContentEntityInterface;
 
 /**
  * Функция, добавляющая виджет в форм настроек таксономии
@@ -18,30 +18,30 @@ use \Drupal\Core\Entity\EntityInterface;
  * @param array $form
  * @param \Drupal\Core\Form\FormStateInterface $form_state
  */
-function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_state) {
+function _metatag_taxchilds_settings_form(array &$form, FormStateInterface $form_state) {
 	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
 	$entity_type = $entity->getEntityType()->id();
-	$config = Drupal::configFactory()->getEditable('ws_taxonomy_meta.' . $entity_type . '.' . $entity->id());
+	$config = Drupal::configFactory()->getEditable('metatag_taxchilds.' . $entity_type . '.' . $entity->id());
 
-	$form['ws_taxonomy_meta'] = [
+	$form['metatag_taxchilds'] = [
 		'#type' => 'details',
 		'#title' => t('Шаблон мета данных для наследников'),
 		'#open' => false,
 		'#weight' => 10
 	];
 
-	$form['ws_taxonomy_meta']['enable_override_meta'] = [
+	$form['metatag_taxchilds']['enable_override_meta'] = [
 		'#type' => 'checkbox',
 		'#title' => t('Переопределить мета данные наследников.'),
 		'#default_value' => $config->get('enable_override')
 	];
 
-	$form['ws_taxonomy_meta']['meta_token_help'] = [
+	$form['metatag_taxchilds']['meta_token_help'] = [
 		'#theme' => 'token_tree_link',
 		'#token_types' => ['node','commerce_product']
 	];
 
-	$form['ws_taxonomy_meta']['meta_title'] = [
+	$form['metatag_taxchilds']['meta_title'] = [
 		'#type'  => 'textfield',
 		'#title' => 'Заголовок',
 		'#size'  => 255,
@@ -54,7 +54,7 @@ function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_
 		'#default_value' => $config->get('title')
 	];
 
-	$form['ws_taxonomy_meta']['meta_description'] = [
+	$form['metatag_taxchilds']['meta_description'] = [
 		'#type'  => 'textarea',
 		'#title' => 'Описание',
 		'#states' => [
@@ -65,7 +65,7 @@ function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_
 		'#default_value' => $config->get('description')
 	];
 
-	$form['ws_taxonomy_meta']['meta_words'] = [
+	$form['metatag_taxchilds']['meta_words'] = [
 		'#type'  => 'textfield',
 		'#title' => 'Ключевые слова',
 		'#size'  => 255,
@@ -82,13 +82,16 @@ function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_
 	if (!is_array($values_default)) $values_default = [];
 	$values = $form_state->get('num_images');
 	if (empty($values)) {
-		$values = count($values_default)+1;
+		$values = count($values_default);
 		if ($values < 1) $values = 1;
 	}
 
-	$form_state->set('num_images',$values+1);
+	if ($form_state->getValue("alt_images_mode") !== null) {
+		$values++;
+		$form_state->set('num_images',$values);
+	}
 
-	$form['ws_taxonomy_meta']['alt_images'] = [
+	$form['metatag_taxchilds']['alt_images'] = [
 		"#type" => 'fieldset',
 		"#title" => "ALT изображений",
 		"#tree" => true,
@@ -103,31 +106,37 @@ function _ws_taxonomy_meta_settings_form(array &$form, FormStateInterface $form_
 		"#tree" => true
 	];
 	for ($i = 0; $i < $values; $i++) {
-		$form['ws_taxonomy_meta']['alt_images'][$i] = [ "#type" => "textfield" ];
+		$form['metatag_taxchilds']['alt_images'][$i] = [ "#type" => "textfield" ];
 		if (isset($values_default[$i]))
-			$form['ws_taxonomy_meta']['alt_images'][$i]["#default_value"] = $values_default[$i];
+			$form['metatag_taxchilds']['alt_images'][$i]["#default_value"] = $values_default[$i];
 	}
 
-	$form['ws_taxonomy_meta']['alt_images_more'] = [
+	$form['metatag_taxchilds']['alt_images_more'] = [
 		"#type" => "button",
 		"#value" => t("more"),
+		"#name"  => "alt_images_mode",
 		"#ajax" => [
-			'callback' => "ws_taxonomy_meta_alt_images_more_callback",
+			'callback' => "metatag_taxchilds_alt_images_more_callback",
 			'wrapper' => "taxonomy_meta_alt_images"
+		],
+		'#states' => [
+			'visible' => [
+				':input[name="enable_override_meta"]' => ['checked' => TRUE],
+			]
 		]
 	];
 
-	$form['actions']['submit']['#submit'][] = 'ws_taxonomy_meta_submit_handler';
+	$form['actions']['submit']['#submit'][] = 'metatag_taxchilds_submit_handler';
 }
 /**
  * Callback кнопки "Добавиь еще"
  */
-function ws_taxonomy_meta_alt_images_more_callback(array &$form, FormStateInterface $form_state) {
-	return $form['ws_taxonomy_meta']['alt_images'];
+function metatag_taxchilds_alt_images_more_callback(array &$form, FormStateInterface $form_state) {
+	return $form['metatag_taxchilds']['alt_images'];
 }
 
-function ws_taxonomy_meta_preprocess_node(&$vars) {
-	$metas = _ws_taxonomy_meta_get_meta($vars["node"]);
+function metatag_taxchilds_preprocess_node(&$vars) {
+	$metas = _metatag_taxchilds_get_meta($vars["node"]);
 	$alt_images = [];
 	if (isset($metas["alt_images"]) && is_array($metas["alt_images"]))
 		$alt_images = $metas["alt_images"];
@@ -155,7 +164,7 @@ function ws_taxonomy_meta_preprocess_node(&$vars) {
 		}
 	}
 }
-function ws_taxonomy_meta_preprocess_responsive_image_formatter(&$vars) {
+function metatag_taxchilds_preprocess_responsive_image_formatter(&$vars) {
 	if (isset($vars["item_attributes"]["alt"]))
 		$vars["responsive_image"]["#attributes"]["alt"] = $vars["item_attributes"]["alt"];
 }
@@ -165,10 +174,10 @@ function ws_taxonomy_meta_preprocess_responsive_image_formatter(&$vars) {
  * @param array $form
  * @param \Drupal\Core\Form\FormStateInterface $form_state
  */
-function ws_taxonomy_meta_form_taxonomy_term_form_alter(array &$form, FormStateInterface $form_state) {
+function metatag_taxchilds_form_taxonomy_term_form_alter(array &$form, FormStateInterface $form_state) {
 	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
 	if ($entity->id() !== NULL)
-		_ws_taxonomy_meta_settings_form($form,$form_state);
+		_metatag_taxchilds_settings_form($form,$form_state);
 }
 /**
  * Implements hook_form_BASE_FORM_ID_alter().
@@ -176,10 +185,10 @@ function ws_taxonomy_meta_form_taxonomy_term_form_alter(array &$form, FormStateI
  * @param array $form
  * @param \Drupal\Core\Form\FormStateInterface $form_state
  */
-function ws_taxonomy_meta_form_taxonomy_vocabulary_form_alter(array &$form, FormStateInterface $form_state) {
+function metatag_taxchilds_form_taxonomy_vocabulary_form_alter(array &$form, FormStateInterface $form_state) {
 	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
 	if ($entity->id() !== NULL)
-		_ws_taxonomy_meta_settings_form($form,$form_state);
+		_metatag_taxchilds_settings_form($form,$form_state);
 }
 /**
  * Submit handler attached to term and vocabulary forms.
@@ -187,7 +196,7 @@ function ws_taxonomy_meta_form_taxonomy_vocabulary_form_alter(array &$form, Form
  * @param array $form
  * @param \Drupal\Core\Form\FormStateInterface $form_state
  */
-function ws_taxonomy_meta_submit_handler(array $form, FormStateInterface $form_state) {
+function metatag_taxchilds_submit_handler(array $form, FormStateInterface $form_state) {
 	$entity = $form_state->getBuildInfo()['callback_object']->getEntity();
 	$entity_type = $entity->getEntityType()->id();
 	$form_values = $form_state->getValues();
@@ -201,7 +210,7 @@ function ws_taxonomy_meta_submit_handler(array $form, FormStateInterface $form_s
 
 	if ($form_values["enable_override_meta"]) {
 		\Drupal::configFactory()
-			->getEditable('ws_taxonomy_meta.' . $entity_type . '.' . $entity->id())
+			->getEditable('metatag_taxchilds.' . $entity_type . '.' . $entity->id())
 			->set('enable_override', $form_values['enable_override_meta'])
 			->set('title', $form_values['meta_title'])
 			->set('description', $form_values['meta_description'])
@@ -210,27 +219,27 @@ function ws_taxonomy_meta_submit_handler(array $form, FormStateInterface $form_s
 			->save();
 	} else {
 		\Drupal::configFactory()
-			->getEditable('ws_taxonomy_meta.' . $entity_type . '.' . $entity->id())
+			->getEditable('metatag_taxchilds.' . $entity_type . '.' . $entity->id())
 			->delete();
 	}
 }
 /**
  * Implements hook_ENTITY_TYPE_delete().
  */
-function ws_taxonomy_meta_taxonomy_vocabulary_delete(EntityInterface $entity) {
-	\Drupal::configFactory()->getEditable('ws_taxonomy_meta.'.$entity->getEntityType()->id().'.' . $entity->id())->delete();
+function metatag_taxchilds_taxonomy_vocabulary_delete(ContentEntityInterface $entity) {
+	\Drupal::configFactory()->getEditable('metatag_taxchilds.'.$entity->getEntityType()->id().'.' . $entity->id())->delete();
 }
 /**
  * Implements hook_taxonomy_term_delete().
  */
-function ws_taxonomy_meta_taxonomy_term_delete(EntityInterface $entity) {
-	\Drupal::configFactory()->getEditable('ws_taxonomy_meta.'.$entity->getEntityType()->id().'.' . $entity->id())->delete();
+function metatag_taxchilds_taxonomy_term_delete(ContentEntityInterface $entity) {
+	\Drupal::configFactory()->getEditable('metatag_taxchilds.'.$entity->getEntityType()->id().'.' . $entity->id())->delete();
 }
 /**
  * Функция анализирует параметры страницы и выдает мета данные
  * @return array
  */
-function _ws_taxonomy_meta_get_meta(EntityInterface $entity = null) {
+function _metatag_taxchilds_get_meta(ContentEntityInterface $entity = null) {
 	$title = null;
 	$description = null;
 	$keywords = null;
@@ -249,14 +258,14 @@ function _ws_taxonomy_meta_get_meta(EntityInterface $entity = null) {
 	if ($entity === null || !is_object($entity))
 		return [];
 
-	$arr = $entity->toArray();
+	$arr = $entity->getFields();
 	foreach ($arr as $key => $value) {
 		if ($entity->get($key) instanceof \Drupal\Core\Field\EntityReferenceFieldItemList) {
 
 			$entity_term = $entity->get($key)->entity;
 			if ($entity_term === null || $entity_term->getEntityTypeId() !== "taxonomy_term") continue;
 
-			$config = \Drupal::configFactory()->get("ws_taxonomy_meta.taxonomy_term.".$entity_term->id());
+			$config = \Drupal::configFactory()->get("metatag_taxchilds.taxonomy_term.".$entity_term->id());
 
 			$finded = false;
 
@@ -282,7 +291,7 @@ function _ws_taxonomy_meta_get_meta(EntityInterface $entity = null) {
 					$parent = $parent->parent->entity;
 					if ($parent === null) break;
 
-					$config = \Drupal::configFactory()->get("ws_taxonomy_meta.taxonomy_term.".$parent->id());
+					$config = \Drupal::configFactory()->get("metatag_taxchilds.taxonomy_term.".$parent->id());
 					if ($config->get("enable_override")) {
 						$finded = true;
 						$title = $config->get("title");
@@ -304,7 +313,7 @@ function _ws_taxonomy_meta_get_meta(EntityInterface $entity = null) {
 
 			// Если не найдено, то смотрим у настроек типа таксономии
 			if (!$finded) {
-				$config = \Drupal::configFactory()->get("ws_taxonomy_meta.taxonomy_vocabulary.".$entity_term->vid->target_id);
+				$config = \Drupal::configFactory()->get("metatag_taxchilds.taxonomy_vocabulary.".$entity_term->vid->target_id);
 
 				if ($config->get("enable_override")) {
 					$title = $config->get("title");
@@ -333,92 +342,25 @@ function _ws_taxonomy_meta_get_meta(EntityInterface $entity = null) {
 		]
 	];
 }
-/**
- * Implements hook_page_attachments_alter().
- */
-function ws_taxonomy_meta_page_attachments_alter(array &$vars) {
+function metatag_taxchilds_metatags_alter(&$metatags,$context) {
 
-	$vars['#cache']['tags'][] = 'taxonomy_term_list';
-
-	$metas = _ws_taxonomy_meta_get_meta();
-	if (count($metas) < 1) return;
-
-	if (isset($metas["description"]))
-		$description = $metas["description"];
-	else
-		$description = null;
-
-	if (isset($metas["keywords"]))
-		$keywords = $metas["keywords"];
-	else
-		$keywords = null;
-
-	if ($keywords === null && $description === null)
+	if (!isset($context["entity"]) || !is_object($context["entity"]) || !($context["entity"] instanceof ContentEntityInterface))
 		return;
 
-	if (isset($vars["#attached"]["html_head"]))
-		foreach ($vars["#attached"]["html_head"] as &$value) {
-			if (isset($value[0]) && isset($value[1]))
-			switch ($value[1]) {
-				case 'description':
-					if (isset($value[0]["#attributes"]["content"])) {
-						$description = null;
-					}
-					break;
-				case 'keywords':
-					if (isset($value[0]["#attributes"]["content"])) {
-						$keywords = null;
-					}
-					break;
-			}
+	$entityTypeId = $context["entity"]->getEntityType()->id();
+	if ($entityTypeId !== "node" && $entityTypeId !== "commerce_product")
+		return;
+
+	$metas = _metatag_taxchilds_get_meta($context["entity"]);
+	if (count($metas) < 1) return;
+	if (!isset($metas["title"]) && !isset($metas["description"]) && !isset($metas["keywords"]))
+		return;
+
+	$entityTags = \Drupal::service('metatag.manager')->tagsFromEntity($context["entity"]);
+
+	foreach ($metatags as $tagName=>$meta) {
+		if (isset($metas[$tagName]) && $metas[$tagName] !== null && !isset($entityTags[$tagName])) {
+			$metatags[$tagName] = $metas[$tagName];
 		}
-
-	if ($keywords === null && $description === null)
-		return;
-
-	$token_service = \Drupal::token();
-
-	if ($description !== null) {
-		$description = $token_service->replace($description, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true]);
-		$description = str_replace(["\n","\r"],"",strip_tags(html_entity_decode($description,ENT_COMPAT)));
-		$vars["#attached"]["html_head"][] = [
-			[
-				"#tag"        => "meta",
-				"#attributes" => [
-					"name"    => "description",
-					"content" => $description
-				]
-			],
-			"description"
-		];
-	}
-
-	if ($keywords !== null) {
-		$keywords = $token_service->replace($keywords, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true]);
-		$keywords = str_replace(["\n","\r"],"",strip_tags(html_entity_decode($keywords,ENT_COMPAT)));
-		$vars["#attached"]["html_head"][] = [
-			[
-				"#tag"        => "meta",
-				"#attributes" => [
-					"name"    => "keywords",
-					"content" => $keywords
-				]
-			],
-			"keywords"
-		];
-	}
-}
-/**
- * Implements hook_preprocess_html().
- */
-function ws_taxonomy_meta_preprocess_html(&$vars) {
-	$vars['#cache']['tags'][] = 'taxonomy_term_list';
-
-	$metas = _ws_taxonomy_meta_get_meta();
-	if (count($metas) < 1) return;
-
-	if (is_string($metas["title"]) && strlen($metas["title"]) > 0) {
-		$token_service = \Drupal::token();
-		$vars["head_title"]["title"] = $token_service->replace($metas["title"], [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true]);
 	}
 }
