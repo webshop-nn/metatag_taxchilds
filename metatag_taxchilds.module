@@ -135,15 +135,38 @@ function metatag_taxchilds_alt_images_more_callback(array &$form, FormStateInter
 	return $form['metatag_taxchilds']['alt_images'];
 }
 
+function metatag_taxchilds_preprocess_commerce_product(&$vars) {
+	$metas = _metatag_taxchilds_get_meta($vars["product_entity"]);
+	$alt_images = [];
+	if (isset($metas["alt_images"]) && is_array($metas["alt_images"]))
+		$alt_images = $metas["alt_images"];
+	
+	if (!empty($alt_images)) {
+		
+		// Подставляем значения
+		$token_service = \Drupal::token();
+		foreach ($alt_images as $key => $item) {
+			$alt_images[$key] = $token_service->replace($item, [ $metas["#context"]["entity_type"] => $metas["#context"]["entity"] ], ['clear' => true]);
+		}
+		
+		// Записываем alt
+		foreach($vars["product"] as &$item) {
+			if (isset($item["#theme"]) && $item["#theme"] === "field" && isset($item["#field_type"]) && $item["#field_type"] === "image") {
+				foreach ($item as $key => &$image) {
+					if (is_int($key) && empty($image["#item"]->alt) && isset($alt_images[$key]))
+							$image["#item_attributes"]["alt"] = $alt_images[$key];
+				}
+			}
+		}
+	}
+}
 function metatag_taxchilds_preprocess_node(&$vars) {
 	$metas = _metatag_taxchilds_get_meta($vars["node"]);
 	$alt_images = [];
 	if (isset($metas["alt_images"]) && is_array($metas["alt_images"]))
 		$alt_images = $metas["alt_images"];
 	
-	$alt_images_length = count($alt_images);
-	
-	if ($alt_images_length > 0) {
+	if (!empty($alt_images)) {
 		
 		// Подставляем значения
 		$token_service = \Drupal::token();
@@ -155,10 +178,8 @@ function metatag_taxchilds_preprocess_node(&$vars) {
 		foreach($vars["content"] as &$item) {
 			if (isset($item["#theme"]) && $item["#theme"] === "field" && isset($item["#field_type"]) && $item["#field_type"] === "image") {
 				foreach ($item as $key => &$image) {
-					if (is_int($key)) {
-						if ((strlen($image["#item"]->alt) <= 0) && isset($alt_images[$key]))
+					if (is_int($key) && empty($image["#item"]->alt) && isset($alt_images[$key]))
 							$image["#item_attributes"]["alt"] = $alt_images[$key];
-					}
 				}
 			}
 		}
