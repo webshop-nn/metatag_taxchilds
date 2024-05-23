@@ -383,5 +383,10 @@ function metatag_taxchilds_metatags_alter(&$metatags,$context) {
 		if (isset($metas[$tagName]) && $metas[$tagName] !== null && !isset($entityTags[$tagName])) {
 			$metatags[$tagName] = $metas[$tagName];
 		}
+		unset($metas[$tagName]);
+	}
+	foreach ($metas as $tagName=>$meta) {
+		if ($tagName !== '#context' && !isset($metatags[$tagName]) && $meta !== null)
+			$metatags[$tagName] = $meta;
 	}
 }
