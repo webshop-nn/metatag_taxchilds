@@ -260,7 +260,7 @@ function metatag_taxchilds_taxonomy_term_delete(ContentEntityInterface $entity) 
  * Функция анализирует параметры страницы и выдает мета данные
  * @return array
  */
-function _metatag_taxchilds_get_meta(ContentEntityInterface $entity = null) {
+function _metatag_taxchilds_get_meta(?ContentEntityInterface $entity = null) {
 	$title = null;
 	$description = null;
 	$keywords = null;
@@ -273,11 +273,10 @@ function _metatag_taxchilds_get_meta(ContentEntityInterface $entity = null) {
 		
 		if (!is_object($entity)) {
 			$entity = $route_match->getParameter('commerce_product');
+			if (!is_object($entity))
+				return [];
 		}
 	}
-	
-	if ($entity === null || !is_object($entity))
-		return [];
 
 	$arr = $entity->getFields();
 	foreach ($arr as $key => $value) {
