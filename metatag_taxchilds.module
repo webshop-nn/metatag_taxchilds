@@ -126,7 +126,7 @@ function _metatag_taxchilds_settings_form(array &$form, FormStateInterface $form
 		]
 	];
 
-	$form['actions']['submit']['#submit'][] = 'metatag_taxchilds_submit_handler';
+	array_unshift($form['#submit'],'metatag_taxchilds_submit_handler');
 }
 /**
  * Callback кнопки "Добавиь еще"
