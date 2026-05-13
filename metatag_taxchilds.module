@@ -126,7 +126,10 @@ function _metatag_taxchilds_settings_form(array &$form, FormStateInterface $form
 		]
 	];
 
-	array_unshift($form['#submit'],'metatag_taxchilds_submit_handler');
+	if (isset($form['actions']['submit']['#submit']))
+		array_unshift($form['actions']['submit']['#submit'],'metatag_taxchilds_submit_handler');
+	else
+		array_unshift($form['#submit'],'metatag_taxchilds_submit_handler');
 }
 /**
  * Callback кнопки "Добавиь еще"
