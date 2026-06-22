@@ -78,6 +78,32 @@ function _metatag_taxchilds_settings_form(array &$form, FormStateInterface $form
 		'#default_value' => $config->get('words')
 	];
 
+	if (\Drupal::moduleHandler()->moduleExists('metatag_open_graph')) {
+		$form['metatag_taxchilds']['meta_og_title'] = [
+			'#type'  => 'textfield',
+			'#title' => 'Заголовок Open Graph',
+			'#size'  => 255,
+			'#maxlength'  => 255,
+			'#states' => [
+				'visible' => [
+					':input[name="enable_override_meta"]' => ['checked' => TRUE],
+				]
+			],
+			'#default_value' => $config->get('og_title')
+		];
+
+		$form['metatag_taxchilds']['meta_og_description'] = [
+			'#type'  => 'textarea',
+			'#title' => 'Описание Open Graph',
+			'#states' => [
+				'visible' => [
+					':input[name="enable_override_meta"]' => ['checked' => TRUE],
+				]
+			],
+			'#default_value' => $config->get('og_description')
+		];
+	}
+
 	$values_default = $config->get('alt_images');
 	if (!is_array($values_default)) $values_default = [];
 	$values = $form_state->get('num_images');
@@ -233,14 +259,18 @@ function metatag_taxchilds_submit_handler(array $form, FormStateInterface $form_
 	}
 
 	if ($form_values["enable_override_meta"]) {
-		\Drupal::configFactory()
-			->getEditable('metatag_taxchilds.' . $entity_type . '.' . $entity->id())
-			->set('enable_override', $form_values['enable_override_meta'])
-			->set('title', $form_values['meta_title'])
-			->set('description', $form_values['meta_description'])
-			->set('words', $form_values['meta_words'])
-			->set('alt_images', $alt_images)
-			->save();
+		$config = \Drupal::configFactory()
+			->getEditable('metatag_taxchilds.' . $entity_type . '.' . $entity->id());
+		$config->set('enable_override', $form_values['enable_override_meta'])
+		       ->set('title', $form_values['meta_title'])
+		       ->set('description', $form_values['meta_description'])
+		       ->set('words', $form_values['meta_words'])
+		       ->set('alt_images', $alt_images);
+		if (\Drupal::moduleHandler()->moduleExists('metatag_open_graph')) {
+			$config->set('og_title', $form_values['meta_og_title'])
+			       ->set('og_description', $form_values['meta_og_description']);
+		}
+		$config->save();
 	} else {
 		\Drupal::configFactory()
 			->getEditable('metatag_taxchilds.' . $entity_type . '.' . $entity->id())
@@ -260,14 +290,41 @@ function metatag_taxchilds_taxonomy_term_delete(ContentEntityInterface $entity) 
 	\Drupal::configFactory()->getEditable('metatag_taxchilds.'.$entity->getEntityType()->id().'.' . $entity->id())->delete();
 }
 /**
+ * Автоматически заполняет значения из конфига в array
+ * 
+ * @param $config - Конфиг, откуда будут взяты настройки
+ * @param &$arr - Массив, в которой вставляем данные
+ * @return Включен ли конфиг
+ */
+function _metatag_taxchilds_parce_taxchilds_config(\Drupal\Core\Config\ImmutableConfig $config, array &$arr): bool {
+	if (!$config->get("enable_override")) return false;
+
+	foreach ([
+		'title'          => 'title',
+		'description'    => 'description',
+		'keywords'       => 'words',
+		'og_title'       => 'og_title',
+		'og_description' => 'og_description',
+		'alt_images'     => 'alt_images'
+	] as $key => $config_key) {
+		$value = $config->get($config_key);
+		if (!empty($value))
+			$arr[$key] = $value;
+	}
+
+	return true;
+}
+/**
  * Функция анализирует параметры страницы и выдает мета данные
  * @return array
  */
 function _metatag_taxchilds_get_meta(?ContentEntityInterface $entity = null) {
-	$title = null;
-	$description = null;
-	$keywords = null;
-	$alt_images = null;
+	$output = [
+		"#context"    => [
+			"entity"      => $entity,
+			"entity_type" => $entity!=null?$entity->getEntityTypeId():null
+		]
+	];
 
 	if ($entity === null) {
 		
@@ -289,23 +346,11 @@ function _metatag_taxchilds_get_meta(?ContentEntityInterface $entity = null) {
 			if ($entity_term === null || $entity_term->getEntityTypeId() !== "taxonomy_term") continue;
 
 			$config = \Drupal::configFactory()->get("metatag_taxchilds.taxonomy_term.".$entity_term->id());
-
 			$finded = false;
 
 			// Смотрим описание и слова у настроек таксономии
-			if ($config->get("enable_override")) {
+			if (_metatag_taxchilds_parce_taxchilds_config($config,$output)) {
 				$finded = true;
-				$title = $config->get("title");
-				if (is_string($title) && strlen($title) < 1)
-					$title = null;
-				$description = $config->get("description");
-				if (is_string($description) && strlen($description) < 1)
-					$description = null;
-				$keywords = $config->get("words");
-				if (is_string($keywords) && strlen($keywords) < 1)
-					$keywords = null;
-				
-				$alt_images = $config->get("alt_images");
 
 			// Если не найдены, то смотрим у родителей
 			} else {
@@ -315,55 +360,21 @@ function _metatag_taxchilds_get_meta(?ContentEntityInterface $entity = null) {
 					if ($parent === null) break;
 
 					$config = \Drupal::configFactory()->get("metatag_taxchilds.taxonomy_term.".$parent->id());
-					if ($config->get("enable_override")) {
+					if (_metatag_taxchilds_parce_taxchilds_config($config,$output)) {
 						$finded = true;
-						$title = $config->get("title");
-						if (is_string($title) && strlen($title) < 1)
-							$title = null;
-						$description = $config->get("description");
-						if (is_string($description) && strlen($description) < 1)
-							$description = null;
-						$keywords = $config->get("words");
-						if (is_string($keywords) && strlen($keywords) < 1)
-							$keywords = null;
-							
-						$alt_images = $config->get("alt_images");
 						break;
 					}
-
 				}
 			}
 
 			// Если не найдено, то смотрим у настроек типа таксономии
 			if (!$finded) {
 				$config = \Drupal::configFactory()->get("metatag_taxchilds.taxonomy_vocabulary.".$entity_term->vid->target_id);
-
-				if ($config->get("enable_override")) {
-					$title = $config->get("title");
-					if (is_string($title) && strlen($title) < 1)
-						$title = null;
-					$description = $config->get("description");
-					if (is_string($description) && strlen($description) < 1)
-						$description = null;
-					$keywords = $config->get("words");
-					if (is_string($keywords) && strlen($keywords) < 1)
-						$keywords = null;
-						
-					$alt_images = $config->get("alt_images");
-				}
+				_metatag_taxchilds_parce_taxchilds_config($config,$output);
 			}
 		}
 	}
-	return [
-		"title"       => $title,
-		"description" => $description,
-		"keywords"    => $keywords,
-		"alt_images"  => $alt_images,
-		"#context"    => [
-			"entity"      => $entity,
-			"entity_type" => $entity->getEntityTypeId()
-		]
-	];
+	return $output;
 }
 function metatag_taxchilds_metatags_alter(&$metatags,$context) {
 
@@ -375,20 +386,30 @@ function metatag_taxchilds_metatags_alter(&$metatags,$context) {
 		return;
 
 	$metas = _metatag_taxchilds_get_meta($context["entity"]);
-	if (count($metas) < 1) return;
-	if (!isset($metas["title"]) && !isset($metas["description"]) && !isset($metas["keywords"]))
-		return;
+	if (count($metas) <= 1) return;
 
+	// Для начала стоит заменить уже имеющиеся поля
 	$entityTags = \Drupal::service('metatag.manager')->tagsFromEntity($context["entity"]);
-
 	foreach ($metatags as $tagName=>$meta) {
-		if (isset($metas[$tagName]) && $metas[$tagName] !== null && !isset($entityTags[$tagName])) {
+		if (isset($metas[$tagName]) && !empty($metas[$tagName]) && !isset($entityTags[$tagName]))
 			$metatags[$tagName] = $metas[$tagName];
-		}
 		unset($metas[$tagName]);
 	}
+
+	// Вставляем alt изображения в open_graph поле
+	if (
+			\Drupal::moduleHandler()->moduleExists('metatag_open_graph')
+			&& isset($metas['alt_images'])
+			&& (
+				!isset($metatags['og_image_alt'])
+				|| empty($metatags['og_image_alt'])
+			)
+		)
+		$metatags['og_image_alt'] = reset($metas['alt_images']);
+
+	// Добавляем недостающие
 	foreach ($metas as $tagName=>$meta) {
-		if ($tagName !== '#context' && !isset($metatags[$tagName]) && $meta !== null)
+		if (!str_starts_with($tagName,'#') && !isset($metatags[$tagName]) && !empty($meta) && is_string($meta))
 			$metatags[$tagName] = $meta;
 	}
 }
